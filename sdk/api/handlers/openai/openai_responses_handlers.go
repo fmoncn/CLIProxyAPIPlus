@@ -689,6 +689,22 @@ func (h *OpenAIResponsesAPIHandler) forwardChatAsResponsesStream(c *gin.Context,
 			_, _ = fmt.Fprintf(c.Writer, "\nevent: error\ndata: %s\n\n", string(body))
 		},
 		WriteDone: func() {
+			// The openai->openai passthrough translator drops the upstream
+			// "[DONE]" marker, so the responses converter never sees it and the
+			// pending response.completed event would be lost. Feed a synthetic
+			// done marker here; the converter's CompletedEmitted guard keeps
+			// the event exactly-once.
+			outputs := responsesconverter.ConvertOpenAIChatCompletionsResponseToOpenAIResponses(ctx, modelName, originalResponsesJSON, originalResponsesJSON, []byte("data: [DONE]"), param)
+			for _, out := range outputs {
+				if len(out) == 0 {
+					continue
+				}
+				if bytes.HasPrefix(out, []byte("event:")) {
+					_, _ = c.Writer.Write([]byte("\n"))
+				}
+				_, _ = c.Writer.Write(out)
+				_, _ = c.Writer.Write([]byte("\n"))
+			}
 			_, _ = c.Writer.Write([]byte("\n"))
 		},
 	})
