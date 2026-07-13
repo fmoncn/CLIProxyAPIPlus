@@ -41,6 +41,41 @@ func NewCodeBuddyExecutor(cfg *config.Config) *CodeBuddyExecutor {
 // Identifier returns the unique identifier for this executor.
 func (e *CodeBuddyExecutor) Identifier() string { return codeBuddyAuthType }
 
+// sanitizeCodexIdentity rewrites system/developer prompts where "Codex" and
+// "OpenAI" co-occur (the Codex CLI built-in identity preamble): the upstream
+// content filter rejects that combination for every model, returning a
+// sensitive-content refusal even for trivial user inputs. Only system-level
+// messages are touched; user content passes through unchanged.
+func sanitizeCodexIdentity(payload []byte) []byte {
+	messages := gjson.GetBytes(payload, "messages")
+	if !messages.IsArray() {
+		return payload
+	}
+	for i, msg := range messages.Array() {
+		role := msg.Get("role").String()
+		if role != "system" && role != "developer" {
+			continue
+		}
+		content := msg.Get("content")
+		if content.Type == gjson.String {
+			text := content.String()
+			if strings.Contains(text, "Codex") && strings.Contains(text, "OpenAI") {
+				payload, _ = sjson.SetBytes(payload, fmt.Sprintf("messages.%d.content", i), strings.ReplaceAll(text, "OpenAI", "the vendor"))
+			}
+			continue
+		}
+		if content.IsArray() {
+			for j, part := range content.Array() {
+				text := part.Get("text").String()
+				if strings.Contains(text, "Codex") && strings.Contains(text, "OpenAI") {
+					payload, _ = sjson.SetBytes(payload, fmt.Sprintf("messages.%d.content.%d.text", i, j), strings.ReplaceAll(text, "OpenAI", "the vendor"))
+				}
+			}
+		}
+	}
+	return payload
+}
+
 // codeBuddyCredentials extracts the access token and domain from auth metadata.
 func codeBuddyCredentials(auth *cliproxyauth.Auth) (accessToken, userID, domain string) {
 	if auth == nil {
@@ -107,6 +142,7 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 	translated := sdktranslator.TranslateRequest(from, to, baseModel, req.Payload, true)
 	requestedModel := payloadRequestedModel(opts, req.Model)
 	translated = applyPayloadConfigWithRoot(e.cfg, baseModel, to.String(), "", translated, originalTranslated, requestedModel)
+	translated = sanitizeCodexIdentity(translated)
 	translated, _ = sjson.SetBytes(translated, "stream", true)
 	translated, _ = sjson.SetBytes(translated, "stream_options.include_usage", true)
 
@@ -206,6 +242,7 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 	translated := sdktranslator.TranslateRequest(from, to, baseModel, req.Payload, true)
 	requestedModel := payloadRequestedModel(opts, req.Model)
 	translated = applyPayloadConfigWithRoot(e.cfg, baseModel, to.String(), "", translated, originalTranslated, requestedModel)
+	translated = sanitizeCodexIdentity(translated)
 
 	translated, err = thinking.ApplyThinking(translated, req.Model, from.String(), to.String(), e.Identifier())
 	if err != nil {

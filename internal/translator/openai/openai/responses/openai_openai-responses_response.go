@@ -424,7 +424,10 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponses(ctx context.Context, 
 				}
 
 				// tool calls
-				if tcs := delta.Get("tool_calls"); tcs.Exists() && tcs.IsArray() {
+				// Some upstreams (e.g. CodeBuddy) attach an empty tool_calls array to
+				// every delta chunk; treating it as a tool-call start would close the
+				// message item after the first text delta and orphan later deltas.
+				if tcs := delta.Get("tool_calls"); tcs.Exists() && tcs.IsArray() && len(tcs.Array()) > 0 {
 					if st.ReasoningID != "" {
 						stopReasoning(st.ReasoningBuf.String())
 						st.ReasoningBuf.Reset()
