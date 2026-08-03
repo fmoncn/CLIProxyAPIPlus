@@ -597,6 +597,27 @@ func ConvertClaudeRequestToAntigravity(modelName string, inputRawJSON []byte, _ 
 		toolsResults := toolsResult.Array()
 		for i := 0; i < len(toolsResults); i++ {
 			toolResult := toolsResults[i]
+			// google_search passthrough (Gemini/Antigravity search grounding).
+			// Mirrors the same handling already present in the openai
+			// chat-completions translator for this provider — the Claude
+			// (Anthropic /v1/messages) path never had it, so any client
+			// sending {"tools":[{"google_search":{}}]} here got silently
+			// ignored (no tool_use, no grounding, model just answered from
+			// training data or declined). Client passes a bare
+			// {"google_search": {...}} tool entry (no input_schema), which
+			// doesn't fit the function-tool shape below, so it's handled
+			// as its own branch before falling into the function-tool path.
+			if gs := toolResult.Get("google_search"); gs.Exists() {
+				googleToolNode := []byte(`{}`)
+				googleToolNode, errSet := sjson.SetRawBytes(googleToolNode, "googleSearch", []byte(gs.Raw))
+				if errSet != nil {
+					log.Warnf("Failed to set googleSearch tool: %v", errSet)
+					continue
+				}
+				toolsJSON, _ = sjson.SetRawBytes(toolsJSON, "-1", googleToolNode)
+				toolDeclCount++
+				continue
+			}
 			inputSchemaResult := toolResult.Get("input_schema")
 			if inputSchemaResult.Exists() && inputSchemaResult.IsObject() {
 				// Sanitize the input schema for Antigravity API compatibility
