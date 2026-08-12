@@ -2332,7 +2332,7 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 			}
 		} else {
 			if result.Model != "" {
-				if !isRequestScopedNotFoundResultError(result.Error) {
+				if !isRequestScopedNotFoundResultError(result.Error) && !isContentPolicyResultError(result.Error) {
 					disableCooling := quotaCooldownDisabledForAuth(auth)
 					state := ensureModelState(auth, result.Model)
 					state.Unavailable = true
@@ -2767,9 +2767,35 @@ func isRequestScopedNotFoundResultError(err *Error) bool {
 	return isRequestScopedNotFoundMessage(err.Message)
 }
 
+// isContentPolicyMessage reports whether a 403 body is an upstream content
+// moderation verdict on the prompt rather than a credential problem. CodeBuddy
+// answers `{"code":11140,"msg":"request illegal"}` for prompts its filter
+// rejects; the credential itself stays perfectly usable for other prompts.
+func isContentPolicyMessage(message string) bool {
+	lower := strings.ToLower(message)
+	if lower == "" {
+		return false
+	}
+	return strings.Contains(lower, "\"code\":11140") ||
+		strings.Contains(lower, "\"code\": 11140") ||
+		strings.Contains(lower, "request illegal")
+}
+
+// isContentPolicyResultError reports whether the failure is request-scoped
+// content moderation. Such failures must not suspend the credential: doing so
+// lets a single rejected prompt take every credential of the provider offline
+// and starve unrelated clients with auth_unavailable.
+func isContentPolicyResultError(err *Error) bool {
+	if err == nil || statusCodeFromResult(err) != http.StatusForbidden {
+		return false
+	}
+	return isContentPolicyMessage(err.Message)
+}
+
 // isRequestInvalidError returns true if the error represents a client request
 // error that should not be retried. Specifically, it treats 400 responses with
-// "invalid_request_error", request-scoped 404 item misses caused by `store=false`,
+// "invalid_request_error", 403 content-moderation verdicts on the prompt,
+// request-scoped 404 item misses caused by `store=false`,
 // and all 422 responses as request-shape failures, where switching auths or
 // pooled upstream models will not help. Model-support errors are excluded so
 // routing can fall through to another auth or upstream.
@@ -2787,6 +2813,8 @@ func isRequestInvalidError(err error) bool {
 		return strings.Contains(msg, "invalid_request_error") ||
 			strings.Contains(msg, "INVALID_ARGUMENT") ||
 			strings.Contains(msg, "FAILED_PRECONDITION")
+	case http.StatusForbidden:
+		return isContentPolicyMessage(err.Error())
 	case http.StatusNotFound:
 		return isRequestScopedNotFoundMessage(err.Error())
 	case http.StatusUnprocessableEntity:
@@ -2804,7 +2832,7 @@ func applyAuthFailureState(auth *Auth, resultErr *Error, retryAfter *time.Durati
 	if auth == nil {
 		return
 	}
-	if isRequestScopedNotFoundResultError(resultErr) {
+	if isRequestScopedNotFoundResultError(resultErr) || isContentPolicyResultError(resultErr) {
 		return
 	}
 	disableCooling := quotaCooldownDisabledForAuth(auth)
