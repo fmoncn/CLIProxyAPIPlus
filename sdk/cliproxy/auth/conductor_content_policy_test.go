@@ -41,6 +41,40 @@ func TestApplyAuthFailureState_ContentPolicyKeepsAuthUsable(t *testing.T) {
 	}
 }
 
+const codebuddyRetiredModelBody = `{"code":11102,"msg":"model [minimax-m2.5] service info not found"}`
+
+func TestIsModelNotProvisionedResultError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  *Error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"codebuddy 11102", &Error{HTTPStatus: http.StatusBadRequest, Message: codebuddyRetiredModelBody}, true},
+		{"plain bad request", &Error{HTTPStatus: http.StatusBadRequest, Message: "invalid_request_error"}, false},
+		{"same body on 500", &Error{HTTPStatus: http.StatusInternalServerError, Message: codebuddyRetiredModelBody}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isModelNotProvisionedResultError(tc.err); got != tc.want {
+				t.Fatalf("isModelNotProvisionedResultError = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestApplyAuthFailureState_RetiredModelKeepsAuthUsable(t *testing.T) {
+	auth := &Auth{ID: "cb-3", Provider: "codebuddy", Status: StatusActive}
+	applyAuthFailureState(auth, &Error{HTTPStatus: http.StatusBadRequest, Message: codebuddyRetiredModelBody}, nil, time.Now())
+
+	if auth.Unavailable {
+		t.Fatal("上游下线模型的 400 不应把凭据置为 Unavailable")
+	}
+	if auth.Status == StatusError {
+		t.Fatal("上游下线模型的 400 不应把凭据置为 StatusError")
+	}
+}
+
 func TestApplyAuthFailureState_PlainForbiddenStillSuspends(t *testing.T) {
 	auth := &Auth{ID: "cb-2", Provider: "codebuddy", Status: StatusActive}
 	applyAuthFailureState(auth, &Error{HTTPStatus: http.StatusForbidden, Message: "permission denied"}, nil, time.Now())

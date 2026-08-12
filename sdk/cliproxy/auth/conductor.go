@@ -2332,7 +2332,8 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 			}
 		} else {
 			if result.Model != "" {
-				if !isRequestScopedNotFoundResultError(result.Error) && !isContentPolicyResultError(result.Error) {
+				if !isRequestScopedNotFoundResultError(result.Error) && !isContentPolicyResultError(result.Error) &&
+					!isModelNotProvisionedResultError(result.Error) {
 					disableCooling := quotaCooldownDisabledForAuth(auth)
 					state := ensureModelState(auth, result.Model)
 					state.Unavailable = true
@@ -2781,6 +2782,28 @@ func isContentPolicyMessage(message string) bool {
 		strings.Contains(lower, "request illegal")
 }
 
+// isModelNotProvisionedMessage reports whether a 400 body says the upstream has
+// no service behind the requested model id. CodeBuddy answers
+// `{"code":11102,"msg":"model [x] service info not found"}` after retiring a
+// model; every credential answers the same way, so it is a property of the
+// request, not of the credential.
+func isModelNotProvisionedMessage(message string) bool {
+	lower := strings.ToLower(message)
+	if lower == "" {
+		return false
+	}
+	return strings.Contains(lower, "\"code\":11102") ||
+		strings.Contains(lower, "\"code\": 11102") ||
+		strings.Contains(lower, "service info not found")
+}
+
+func isModelNotProvisionedResultError(err *Error) bool {
+	if err == nil || statusCodeFromResult(err) != http.StatusBadRequest {
+		return false
+	}
+	return isModelNotProvisionedMessage(err.Message)
+}
+
 // isContentPolicyResultError reports whether the failure is request-scoped
 // content moderation. Such failures must not suspend the credential: doing so
 // lets a single rejected prompt take every credential of the provider offline
@@ -2810,7 +2833,8 @@ func isRequestInvalidError(err error) bool {
 	switch status {
 	case http.StatusBadRequest:
 		msg := err.Error()
-		return strings.Contains(msg, "invalid_request_error") ||
+		return isModelNotProvisionedMessage(msg) ||
+			strings.Contains(msg, "invalid_request_error") ||
 			strings.Contains(msg, "INVALID_ARGUMENT") ||
 			strings.Contains(msg, "FAILED_PRECONDITION")
 	case http.StatusForbidden:
@@ -2832,7 +2856,8 @@ func applyAuthFailureState(auth *Auth, resultErr *Error, retryAfter *time.Durati
 	if auth == nil {
 		return
 	}
-	if isRequestScopedNotFoundResultError(resultErr) || isContentPolicyResultError(resultErr) {
+	if isRequestScopedNotFoundResultError(resultErr) || isContentPolicyResultError(resultErr) ||
+		isModelNotProvisionedResultError(resultErr) {
 		return
 	}
 	disableCooling := quotaCooldownDisabledForAuth(auth)
