@@ -6,6 +6,30 @@ func GetCodeBuddyModels() []*ModelInfo {
 	now := int64(1748044800) // 2025-05-24
 	return []*ModelInfo{
 		{
+			ID:                  "deepseek-v3.2",
+			Object:              "model",
+			Created:             now,
+			OwnedBy:             "tencent",
+			Type:                "codebuddy",
+			DisplayName:         "DEEPSEEK V3.2",
+			Description:         "DEEPSEEK V3.2 via CodeBuddy",
+			ContextLength:       200000,
+			MaxCompletionTokens: 32768,
+			SupportedEndpoints:  []string{"/chat/completions"},
+		},
+		{
+			ID:                  "kimi-k3",
+			Object:              "model",
+			Created:             now,
+			OwnedBy:             "tencent",
+			Type:                "codebuddy",
+			DisplayName:         "KIMI K3",
+			Description:         "KIMI K3 via CodeBuddy",
+			ContextLength:       200000,
+			MaxCompletionTokens: 32768,
+			SupportedEndpoints:  []string{"/chat/completions"},
+		},
+		{
 			ID:                  "auto",
 			Object:              "model",
 			Created:             now,
