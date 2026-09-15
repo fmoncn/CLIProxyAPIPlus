@@ -6,6 +6,18 @@ func GetCodeBuddyModels() []*ModelInfo {
 	now := int64(1748044800) // 2025-05-24
 	return []*ModelInfo{
 		{
+			ID:                  "deepseek-v4.1-flash",
+			Object:              "model",
+			Created:             now,
+			OwnedBy:             "tencent",
+			Type:                "codebuddy",
+			DisplayName:         "DeepSeek V4.1 Flash",
+			Description:         "DeepSeek V4.1 Flash via CodeBuddy",
+			ContextLength:       200000,
+			MaxCompletionTokens: 32768,
+			SupportedEndpoints:  []string{"/chat/completions"},
+		},
+		{
 			ID:                  "deepseek-v3.2",
 			Object:              "model",
 			Created:             now,
