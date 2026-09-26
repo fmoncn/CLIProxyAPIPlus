@@ -13,12 +13,9 @@ func GetCodeBuddyModels() []*ModelInfo {
 			Type:                "codebuddy",
 			DisplayName:         "DeepSeek V4.1 Flash",
 			Description:         "DeepSeek V4.1 Flash via CodeBuddy",
-			ContextLength:       200000,
+			ContextLength:       1048576,
 			MaxCompletionTokens: 32768,
 			SupportedEndpoints:  []string{"/chat/completions"},
-			// 上游认 reasoning_effort（任意值都开思考）；不声明会被 ApplyThinking 剥掉，
-			// 非思考模式下 codex 长会话经常“说完下一步就 stop”。
-			Thinking: &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
 		},
 		{
 			ID:                  "deepseek-v3.2",
@@ -247,9 +244,6 @@ func GetCodeBuddyModels() []*ModelInfo {
 			ContextLength:       128000,
 			MaxCompletionTokens: 32768,
 			SupportedEndpoints:  []string{"/chat/completions"},
-			// 上游认 reasoning_effort（任意值都开思考）；不声明会被 ApplyThinking 剥掉，
-			// 非思考模式下 codex 长会话经常“说完下一步就 stop”。
-			Thinking: &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
 		},
 		{
 			ID:                  "deepseek-v4-pro",
