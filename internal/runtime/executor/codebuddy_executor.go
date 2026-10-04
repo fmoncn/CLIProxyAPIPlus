@@ -76,6 +76,30 @@ func sanitizeCodexIdentity(payload []byte) []byte {
 	return payload
 }
 
+func fixCodeBuddyPayload(payload []byte) []byte {
+	messages := gjson.GetBytes(payload, "messages")
+	if messages.IsArray() {
+		arr := messages.Array()
+		if len(arr) > 0 && arr[0].Get("role").String() != "system" {
+			systemMsg := map[string]string{
+				"role":    "system",
+				"content": "You are a helpful AI coding assistant.",
+			}
+			newMessages := []any{systemMsg}
+			for _, m := range arr {
+				newMessages = append(newMessages, m.Value())
+			}
+			payload, _ = sjson.SetBytes(payload, "messages", newMessages)
+		}
+	}
+	if maxTok := gjson.GetBytes(payload, "max_tokens"); maxTok.Exists() {
+		val := maxTok.Int()
+		payload, _ = sjson.DeleteBytes(payload, "max_tokens")
+		payload, _ = sjson.SetBytes(payload, "max_completion_tokens", val)
+	}
+	return payload
+}
+
 // codeBuddyCredentials extracts the access token and domain from auth metadata.
 func codeBuddyCredentials(auth *cliproxyauth.Auth) (accessToken, userID, domain string) {
 	if auth == nil {
@@ -131,6 +155,10 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 		return resp, fmt.Errorf("codebuddy: missing access token")
 	}
 
+	if !strings.Contains(domain, "codebuddy.ai") && isIntlOnlyModel(baseModel) {
+		return resp, fmt.Errorf("codebuddy: model %s is only supported on international accounts", baseModel)
+	}
+
 	from := opts.SourceFormat
 	to := sdktranslator.FromString("openai")
 
@@ -143,6 +171,7 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 	requestedModel := payloadRequestedModel(opts, req.Model)
 	translated = applyPayloadConfigWithRoot(e.cfg, baseModel, to.String(), "", translated, originalTranslated, requestedModel)
 	translated = sanitizeCodexIdentity(translated)
+	translated = fixCodeBuddyPayload(translated)
 	translated, _ = sjson.SetBytes(translated, "stream", true)
 	translated, _ = sjson.SetBytes(translated, "stream_options.include_usage", true)
 
@@ -151,7 +180,7 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 		return resp, err
 	}
 
-	url := codebuddy.BaseURL + codeBuddyChatPath
+	url := codebuddy.ResolveBaseURL(domain) + codeBuddyChatPath
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(translated))
 	if err != nil {
 		return resp, err
@@ -231,6 +260,10 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 		return nil, fmt.Errorf("codebuddy: missing access token")
 	}
 
+	if !strings.Contains(domain, "codebuddy.ai") && isIntlOnlyModel(baseModel) {
+		return nil, fmt.Errorf("codebuddy: model %s is only supported on international accounts", baseModel)
+	}
+
 	from := opts.SourceFormat
 	to := sdktranslator.FromString("openai")
 
@@ -243,13 +276,14 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 	requestedModel := payloadRequestedModel(opts, req.Model)
 	translated = applyPayloadConfigWithRoot(e.cfg, baseModel, to.String(), "", translated, originalTranslated, requestedModel)
 	translated = sanitizeCodexIdentity(translated)
+	translated = fixCodeBuddyPayload(translated)
 
 	translated, err = thinking.ApplyThinking(translated, req.Model, from.String(), to.String(), e.Identifier())
 	if err != nil {
 		return nil, err
 	}
 
-	url := codebuddy.BaseURL + codeBuddyChatPath
+	url := codebuddy.ResolveBaseURL(domain) + codeBuddyChatPath
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(translated))
 	if err != nil {
 		return nil, err
@@ -316,6 +350,14 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 			}
 			if !bytes.HasPrefix(line, []byte("data:")) {
 				continue
+			}
+			payload := bytes.TrimSpace(line[5:])
+			if len(payload) > 0 && !bytes.Equal(payload, []byte("[DONE]")) {
+				if obj := gjson.GetBytes(payload, "object").String(); obj != "" && obj != "chat.completion.chunk" {
+					if updated, err := sjson.SetBytes(payload, "object", "chat.completion.chunk"); err == nil {
+						line = append([]byte("data: "), updated...)
+					}
+				}
 			}
 			chunks := sdktranslator.TranslateStream(ctx, to, from, req.Model, opts.OriginalRequest, translated, bytes.Clone(line), &param)
 			for i := range chunks {
@@ -594,3 +636,10 @@ func aggregateOpenAIChatCompletionStream(raw []byte) ([]byte, usage.Detail, erro
 	}
 	return out, usageDetail, nil
 }
+
+// isIntlOnlyModel reports whether the given model is only available on international CodeBuddy accounts.
+func isIntlOnlyModel(model string) bool {
+	base := strings.ToLower(strings.TrimSpace(thinking.ParseSuffix(model).ModelName))
+	return strings.HasPrefix(base, "gpt-") || strings.HasPrefix(base, "claude-") || strings.HasPrefix(base, "gemini-") || strings.HasPrefix(base, "codex-")
+}
+

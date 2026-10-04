@@ -32,6 +32,8 @@ type CodeBuddyTokenStorage struct {
 	UserID string `json:"user_id"`
 	// Type indicates the authentication provider type, always "codebuddy" for this storage.
 	Type string `json:"type"`
+	// Priority is the scheduling priority (higher numbers are preferred first).
+	Priority int `json:"priority,omitempty"`
 }
 
 // SaveTokenToFile serializes the CodeBuddy token storage to a JSON file.
