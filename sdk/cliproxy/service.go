@@ -1245,7 +1245,22 @@ func (s *Service) registerModelsForAuth(a *coreauth.Auth) {
 		models = executor.GitLabModelsFromAuth(a)
 		models = applyExcludedModels(models, excluded)
 	case "codebuddy":
-		models = registry.GetCodeBuddyModels()
+		domain := ""
+		if a != nil {
+			if a.Metadata != nil {
+				if d, ok := a.Metadata["domain"].(string); ok {
+					domain = d
+				}
+			}
+			if domain == "" && a.Attributes != nil {
+				domain = a.Attributes["domain"]
+			}
+		}
+		if strings.Contains(domain, "codebuddy.ai") {
+			models = registry.GetCodeBuddyIntlModels()
+		} else {
+			models = registry.GetCodeBuddyDomesticModels()
+		}
 		models = applyExcludedModels(models, excluded)
 	case "qoder":
 		models = executor.FetchQoderModels(context.Background(), a, s.cfg)

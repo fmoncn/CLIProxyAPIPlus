@@ -21,7 +21,9 @@ import (
 
 const (
 	BaseURL       = "https://copilot.tencent.com"
+	IntlBaseURL   = "https://www.codebuddy.ai"
 	DefaultDomain = "www.codebuddy.cn"
+	IntlDomain    = "www.codebuddy.ai"
 	UserAgent     = "CLI/2.63.2 CodeBuddy/2.63.2"
 
 	codeBuddyStatePath   = "/v2/plugin/auth/state"
@@ -32,6 +34,14 @@ const (
 	codeLoginPending     = 11217
 	codeSuccess          = 0
 )
+
+// ResolveBaseURL returns the corresponding API base URL according to the domain.
+func ResolveBaseURL(domain string) string {
+	if strings.Contains(domain, "codebuddy.ai") {
+		return IntlBaseURL
+	}
+	return BaseURL
+}
 
 type CodeBuddyAuth struct {
 	httpClient *http.Client
@@ -237,7 +247,8 @@ func (a *CodeBuddyAuth) RefreshToken(ctx context.Context, accessToken, refreshTo
 	if domain == "" {
 		domain = DefaultDomain
 	}
-	refreshURL := fmt.Sprintf("%s%s", a.baseURL, codeBuddyRefreshPath)
+	baseURL := ResolveBaseURL(domain)
+	refreshURL := fmt.Sprintf("%s%s", baseURL, codeBuddyRefreshPath)
 	body := []byte("{}")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, refreshURL, bytes.NewReader(body))

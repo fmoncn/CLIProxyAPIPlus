@@ -236,7 +236,7 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponses(ctx context.Context, 
 
 	root := gjson.ParseBytes(rawJSON)
 	obj := root.Get("object")
-	if obj.Exists() && obj.String() != "" && obj.String() != "chat.completion.chunk" {
+	if obj.Exists() && obj.String() != "" && obj.String() != "chat.completion.chunk" && obj.String() != "response" && obj.String() != "chat.completion" {
 		return [][]byte{}
 	}
 	if !root.Get("choices").Exists() || !root.Get("choices").IsArray() {
