@@ -439,7 +439,7 @@ func (e *CodeBuddyExecutor) applyHeaders(req *http.Request, accessToken, userID,
 	req.Header.Set("X-Product", "SaaS")
 	req.Header.Set("X-IDE-Type", "CLI")
 	req.Header.Set("X-IDE-Name", "CLI")
-	req.Header.Set("X-IDE-Version", "2.63.2")
+	req.Header.Set("X-IDE-Version", "2.108.1")
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 }
 
