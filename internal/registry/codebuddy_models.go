@@ -97,6 +97,8 @@ func GetCodeBuddyDomesticModels() []*ModelInfo {
 			ContextLength:       200000,
 			MaxCompletionTokens: 32768,
 			SupportedEndpoints:  []string{"/chat/completions"},
+			// glm-high 档（codex -p glm-high）靠它把 reasoning_effort 透传给上游。
+			Thinking: &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
 		},
 		{
 			ID:                  "glm-5.2",
