@@ -97,6 +97,16 @@ func fixCodeBuddyPayload(payload []byte) []byte {
 		payload, _ = sjson.DeleteBytes(payload, "max_tokens")
 		payload, _ = sjson.SetBytes(payload, "max_completion_tokens", val)
 	}
+	// 上游只认数组形式的 stop，字符串会报 400(11101)。Claude→OpenAI 翻译器在只有
+	// 一个 stop_sequence 时会写成字符串（Claude Code 自动模式分类器就是这样）。
+	// 空字符串同样报 11101，直接去掉。
+	if stop := gjson.GetBytes(payload, "stop"); stop.Type == gjson.String {
+		if stop.String() == "" {
+			payload, _ = sjson.DeleteBytes(payload, "stop")
+		} else {
+			payload, _ = sjson.SetBytes(payload, "stop", []string{stop.String()})
+		}
+	}
 	return payload
 }
 

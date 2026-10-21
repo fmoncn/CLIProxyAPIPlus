@@ -48,12 +48,9 @@ func ConvertClaudeRequestToOpenAI(modelName string, inputRawJSON []byte, stream 
 				stops = append(stops, value.String())
 				return true
 			})
+			// 始终输出数组：部分 OpenAI 兼容上游（如 CodeBuddy）不接受字符串形式的 stop。
 			if len(stops) > 0 {
-				if len(stops) == 1 {
-					out, _ = sjson.SetBytes(out, "stop", stops[0])
-				} else {
-					out, _ = sjson.SetBytes(out, "stop", stops)
-				}
+				out, _ = sjson.SetBytes(out, "stop", stops)
 			}
 		}
 	}
