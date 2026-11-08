@@ -331,6 +331,32 @@ func GetCodeBuddyDomesticModels() []*ModelInfo {
 			SupportedEndpoints:  []string{"/chat/completions"},
 			Thinking: &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
 		},
+		{
+			ID:                  "hy4free",
+			Object:              "model",
+			Created:             now,
+			OwnedBy:             "tencent",
+			Type:                "codebuddy",
+			DisplayName:         "Hy4",
+			Description:         "Hy4 via CodeBuddy",
+			ContextLength:       960000,
+			MaxCompletionTokens: 64000,
+			SupportedEndpoints:  []string{"/chat/completions"},
+			Thinking: &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
+		},
+		{
+			ID:                  "hy4std",
+			Object:              "model",
+			Created:             now,
+			OwnedBy:             "tencent",
+			Type:                "codebuddy",
+			DisplayName:         "Hy4",
+			Description:         "Hy4 via CodeBuddy",
+			ContextLength:       960000,
+			MaxCompletionTokens: 64000,
+			SupportedEndpoints:  []string{"/chat/completions"},
+			Thinking: &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
+		},
 	}
 }
 
