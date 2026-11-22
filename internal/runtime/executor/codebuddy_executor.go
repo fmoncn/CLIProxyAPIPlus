@@ -11,16 +11,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/auth/codebuddy"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/thinking"
-	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
-	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/usage"
-	sdktranslator "github.com/router-for-me/CLIProxyAPI/v7/sdk/translator"
+	"github.com/MoeForge/moego/ojson"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codebuddy"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
+	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
+	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	log "github.com/sirupsen/logrus"
-	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 const (
@@ -47,7 +46,7 @@ func (e *CodeBuddyExecutor) Identifier() string { return codeBuddyAuthType }
 // sensitive-content refusal even for trivial user inputs. Only system-level
 // messages are touched; user content passes through unchanged.
 func sanitizeCodexIdentity(payload []byte) []byte {
-	messages := gjson.GetBytes(payload, "messages")
+	messages := ojson.GetBytesNoCopy(payload, "messages")
 	if !messages.IsArray() {
 		return payload
 	}
@@ -57,10 +56,10 @@ func sanitizeCodexIdentity(payload []byte) []byte {
 			continue
 		}
 		content := msg.Get("content")
-		if content.Type == gjson.String {
+		if content.Type == ojson.String {
 			text := content.String()
 			if strings.Contains(text, "Codex") && strings.Contains(text, "OpenAI") {
-				payload, _ = sjson.SetBytes(payload, fmt.Sprintf("messages.%d.content", i), strings.ReplaceAll(text, "OpenAI", "the vendor"))
+				payload, _ = ojson.SetBytes(payload, fmt.Sprintf("messages.%d.content", i), strings.ReplaceAll(text, "OpenAI", "the vendor"))
 			}
 			continue
 		}
@@ -68,7 +67,7 @@ func sanitizeCodexIdentity(payload []byte) []byte {
 			for j, part := range content.Array() {
 				text := part.Get("text").String()
 				if strings.Contains(text, "Codex") && strings.Contains(text, "OpenAI") {
-					payload, _ = sjson.SetBytes(payload, fmt.Sprintf("messages.%d.content.%d.text", i, j), strings.ReplaceAll(text, "OpenAI", "the vendor"))
+					payload, _ = ojson.SetBytes(payload, fmt.Sprintf("messages.%d.content.%d.text", i, j), strings.ReplaceAll(text, "OpenAI", "the vendor"))
 				}
 			}
 		}
@@ -77,7 +76,7 @@ func sanitizeCodexIdentity(payload []byte) []byte {
 }
 
 func fixCodeBuddyPayload(payload []byte) []byte {
-	messages := gjson.GetBytes(payload, "messages")
+	messages := ojson.GetBytesNoCopy(payload, "messages")
 	if messages.IsArray() {
 		arr := messages.Array()
 		if len(arr) > 0 && arr[0].Get("role").String() != "system" {
@@ -89,22 +88,22 @@ func fixCodeBuddyPayload(payload []byte) []byte {
 			for _, m := range arr {
 				newMessages = append(newMessages, m.Value())
 			}
-			payload, _ = sjson.SetBytes(payload, "messages", newMessages)
+			payload, _ = ojson.SetBytes(payload, "messages", newMessages)
 		}
 	}
-	if maxTok := gjson.GetBytes(payload, "max_tokens"); maxTok.Exists() {
+	if maxTok := ojson.GetBytesNoCopy(payload, "max_tokens"); maxTok.Exists() {
 		val := maxTok.Int()
-		payload, _ = sjson.DeleteBytes(payload, "max_tokens")
-		payload, _ = sjson.SetBytes(payload, "max_completion_tokens", val)
+		payload, _ = ojson.DeleteBytes(payload, "max_tokens")
+		payload, _ = ojson.SetBytes(payload, "max_completion_tokens", val)
 	}
 	// 上游只认数组形式的 stop，字符串会报 400(11101)。Claude→OpenAI 翻译器在只有
 	// 一个 stop_sequence 时会写成字符串（Claude Code 自动模式分类器就是这样）。
 	// 空字符串同样报 11101，直接去掉。
-	if stop := gjson.GetBytes(payload, "stop"); stop.Type == gjson.String {
+	if stop := ojson.GetBytesNoCopy(payload, "stop"); stop.Type == ojson.String {
 		if stop.String() == "" {
-			payload, _ = sjson.DeleteBytes(payload, "stop")
+			payload, _ = ojson.DeleteBytes(payload, "stop")
 		} else {
-			payload, _ = sjson.SetBytes(payload, "stop", []string{stop.String()})
+			payload, _ = ojson.SetBytes(payload, "stop", []string{stop.String()})
 		}
 	}
 	return payload
@@ -182,8 +181,8 @@ func (e *CodeBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 	translated = applyPayloadConfigWithRoot(e.cfg, baseModel, to.String(), "", translated, originalTranslated, requestedModel)
 	translated = sanitizeCodexIdentity(translated)
 	translated = fixCodeBuddyPayload(translated)
-	translated, _ = sjson.SetBytes(translated, "stream", true)
-	translated, _ = sjson.SetBytes(translated, "stream_options.include_usage", true)
+	translated, _ = ojson.SetBytes(translated, "stream", true)
+	translated, _ = ojson.SetBytes(translated, "stream_options.include_usage", true)
 
 	translated, err = thinking.ApplyThinking(translated, req.Model, from.String(), to.String(), e.Identifier())
 	if err != nil {
@@ -363,9 +362,9 @@ func (e *CodeBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 			}
 			payload := bytes.TrimSpace(line[5:])
 			if len(payload) > 0 && !bytes.Equal(payload, []byte("[DONE]")) {
-				if obj := gjson.GetBytes(payload, "object").String(); obj != "" && obj != "chat.completion.chunk" {
-					if updated, err := sjson.SetBytes(payload, "object", "chat.completion.chunk"); err == nil {
-						line = append([]byte("data: "), updated...)
+				if obj := ojson.GetBytesNoCopy(payload, "object").String(); obj != "" && obj != "chat.completion.chunk" {
+					if updated, err := ojson.SetBytes(payload, "object", "chat.completion.chunk"); err == nil {
+						line = append([]byte("data: "), bytes.TrimSpace(updated)...)
 					}
 				}
 			}
@@ -492,11 +491,11 @@ func aggregateOpenAIChatCompletionStream(raw []byte) ([]byte, usage.Detail, erro
 		if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
 			continue
 		}
-		if !gjson.ValidBytes(payload) {
+		if !ojson.ValidBytes(payload) {
 			continue
 		}
 
-		root := gjson.ParseBytes(payload)
+		root := ojson.ParseBytes(payload)
 		if responseID == "" {
 			responseID = root.Get("id").String()
 		}
@@ -652,4 +651,3 @@ func isIntlOnlyModel(model string) bool {
 	base := strings.ToLower(strings.TrimSpace(thinking.ParseSuffix(model).ModelName))
 	return strings.HasPrefix(base, "gpt-") || strings.HasPrefix(base, "claude-") || strings.HasPrefix(base, "gemini-") || strings.HasPrefix(base, "codex-")
 }
-

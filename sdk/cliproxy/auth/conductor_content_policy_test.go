@@ -31,7 +31,7 @@ func TestIsContentPolicyResultError(t *testing.T) {
 
 func TestApplyAuthFailureState_ContentPolicyKeepsAuthUsable(t *testing.T) {
 	auth := &Auth{ID: "cb-1", Provider: "codebuddy", Status: StatusActive}
-	applyAuthFailureState(auth, &Error{HTTPStatus: http.StatusForbidden, Message: codebuddyBlockBody}, nil, time.Now())
+	applyAuthFailureState(auth, &Error{HTTPStatus: http.StatusForbidden, Message: codebuddyBlockBody}, nil, time.Now(), false)
 
 	if auth.Unavailable {
 		t.Fatal("内容风控 403 不应把凭据置为 Unavailable")
@@ -65,7 +65,7 @@ func TestIsModelNotProvisionedResultError(t *testing.T) {
 
 func TestApplyAuthFailureState_RetiredModelKeepsAuthUsable(t *testing.T) {
 	auth := &Auth{ID: "cb-3", Provider: "codebuddy", Status: StatusActive}
-	applyAuthFailureState(auth, &Error{HTTPStatus: http.StatusBadRequest, Message: codebuddyRetiredModelBody}, nil, time.Now())
+	applyAuthFailureState(auth, &Error{HTTPStatus: http.StatusBadRequest, Message: codebuddyRetiredModelBody}, nil, time.Now(), false)
 
 	if auth.Unavailable {
 		t.Fatal("上游下线模型的 400 不应把凭据置为 Unavailable")
@@ -77,7 +77,7 @@ func TestApplyAuthFailureState_RetiredModelKeepsAuthUsable(t *testing.T) {
 
 func TestApplyAuthFailureState_PlainForbiddenStillSuspends(t *testing.T) {
 	auth := &Auth{ID: "cb-2", Provider: "codebuddy", Status: StatusActive}
-	applyAuthFailureState(auth, &Error{HTTPStatus: http.StatusForbidden, Message: "permission denied"}, nil, time.Now())
+	applyAuthFailureState(auth, &Error{HTTPStatus: http.StatusForbidden, Message: "permission denied"}, nil, time.Now(), false)
 
 	if !auth.Unavailable {
 		t.Fatal("普通 403 仍应把凭据置为 Unavailable")

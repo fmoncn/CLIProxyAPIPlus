@@ -9,8 +9,52 @@ import (
 	"testing"
 	"time"
 
-	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
+	"github.com/MoeForge/moego/ojson"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 )
+
+func TestResolveAntigravityRequestBaseURL(t *testing.T) {
+	t.Run("default uses daily endpoint", func(t *testing.T) {
+		if got := resolveAntigravityRequestBaseURL(&cliproxyauth.Auth{}); got != antigravityBaseURLDaily {
+			t.Fatalf("base URL = %q, want %q", got, antigravityBaseURLDaily)
+		}
+	})
+
+	t.Run("custom attribute endpoint remains supported", func(t *testing.T) {
+		auth := &cliproxyauth.Auth{Attributes: map[string]string{"base_url": "https://enterprise.example.com/"}}
+		if got := resolveAntigravityRequestBaseURL(auth); got != "https://enterprise.example.com" {
+			t.Fatalf("base URL = %q, want custom endpoint", got)
+		}
+	})
+
+	t.Run("custom auth file endpoint remains supported", func(t *testing.T) {
+		auth := &cliproxyauth.Auth{Metadata: map[string]any{"base_url": "https://enterprise.example.com/"}}
+		if got := resolveAntigravityRequestBaseURL(auth); got != "https://enterprise.example.com" {
+			t.Fatalf("base URL = %q, want custom auth file endpoint", got)
+		}
+	})
+}
+
+func TestAntigravityLoadCodeAssistBaseURL(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		auth *cliproxyauth.Auth
+		want string
+	}{
+		{"default daily", &cliproxyauth.Auth{}, antigravityBaseURLDaily},
+		{"custom attribute", &cliproxyauth.Auth{Attributes: map[string]string{"base_url": antigravityBaseURLProd + "/"}}, antigravityBaseURLProd},
+		{"custom metadata", &cliproxyauth.Auth{Metadata: map[string]any{"base_url": "https://enterprise.example.com/"}}, "https://enterprise.example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := antigravityLoadCodeAssistBaseURL(tc.auth); got != tc.want {
+				t.Fatalf("loadCodeAssist base URL = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestAntigravityBuildRequest_SanitizesGeminiToolSchema(t *testing.T) {
 	body := buildRequestBodyFromPayload(t, "gemini-2.5-pro")
@@ -110,6 +154,128 @@ func TestAntigravityBuildRequest_UsesAuthProjectID(t *testing.T) {
 	}
 }
 
+func TestAntigravityBuildRequest_UsesRouteModelWhenPayloadContainsDifferentModel(t *testing.T) {
+	body := buildRequestBodyFromRawPayload(t, "gemini-3-flash-agent", []byte(`{
+		"model": "gemini-3.1-flash-lite",
+		"request": {
+			"contents": [
+				{
+					"role": "user",
+					"parts": [{"text": "Perform a web search"}]
+				}
+			],
+			"tools": [{"googleSearch": {}}]
+		}
+	}`))
+
+	if got, ok := body["model"].(string); !ok || got != "gemini-3-flash-agent" {
+		t.Fatalf("request model should stay on route model, got=%v", body["model"])
+	}
+}
+
+func TestAntigravityBuildRequestUsesDerivedSessionIDAndPreservesExplicit(t *testing.T) {
+	t.Parallel()
+
+	executor := &AntigravityExecutor{}
+	auth := &cliproxyauth.Auth{Metadata: map[string]any{"project_id": "project-1"}}
+	payload := []byte(`{"request":{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}}`)
+	req, err := executor.buildRequest(context.Background(), auth, "token", "gemini-3.1-pro", payload, false, "", "https://example.com", "-123456789")
+	if err != nil {
+		t.Fatalf("buildRequest error: %v", err)
+	}
+	body := requestBody(t, req)
+	request, ok := body["request"].(map[string]any)
+	if !ok {
+		t.Fatalf("request missing or invalid: %v", body["request"])
+	}
+	if got := request["sessionId"]; got != "-123456789" {
+		t.Fatalf("request.sessionId = %v, want -123456789", got)
+	}
+
+	explicitPayload := []byte(`{"request":{"sessionId":"-987654321","contents":[{"role":"user","parts":[{"text":"hello"}]}]}}`)
+	explicitReq, errExplicit := executor.buildRequest(context.Background(), auth, "token", "gemini-3.1-pro", explicitPayload, false, "", "https://example.com", "-123456789")
+	if errExplicit != nil {
+		t.Fatalf("buildRequest explicit error: %v", errExplicit)
+	}
+	explicitBody := requestBody(t, explicitReq)
+	explicitRequest, ok := explicitBody["request"].(map[string]any)
+	if !ok {
+		t.Fatalf("explicit request missing or invalid: %v", explicitBody["request"])
+	}
+	if got := explicitRequest["sessionId"]; got != "-987654321" {
+		t.Fatalf("explicit request.sessionId = %v, want -987654321", got)
+	}
+}
+
+func TestAntigravityBuildRequest_PreservesIndependentWebSearchRequestType(t *testing.T) {
+	body := buildRequestBodyFromRawPayload(t, "gemini-3.1-flash-lite", []byte(`{
+		"requestType": "web_search",
+		"request": {
+			"contents": [
+				{
+					"role": "user",
+					"parts": [{"text": "北京天气 2026-06-12"}]
+				}
+			],
+			"tools": [
+				{
+					"googleSearch": {
+						"enhancedContent": {
+							"imageSearch": {
+								"maxResultCount": 5
+							}
+						}
+					}
+				}
+			],
+			"generationConfig": {
+				"candidateCount": 1
+			}
+		}
+	}`))
+
+	if got, ok := body["requestType"].(string); !ok || got != "web_search" {
+		t.Fatalf("requestType should stay web_search, got=%v", body["requestType"])
+	}
+	if _, ok := body["requestId"]; ok {
+		t.Fatalf("web_search request should not add requestId: %v", body["requestId"])
+	}
+	request, ok := body["request"].(map[string]any)
+	if !ok {
+		t.Fatalf("request missing or invalid: %v", body["request"])
+	}
+	if _, ok := request["sessionId"]; ok {
+		t.Fatalf("web_search request should not add request.sessionId: %v", request["sessionId"])
+	}
+	if got, ok := body["project"].(string); !ok || got != "project-1" {
+		t.Fatalf("project should come from auth metadata, got=%v", body["project"])
+	}
+}
+
+func TestShouldResolveAntigravityWebSearchGroundingURLsRequiresTypedWebSearchAndSearchRequest(t *testing.T) {
+	original := []byte(`{"tools":[{"type":"web_search_20250305","name":"web_search"}]}`)
+	originalResponses := []byte(`{"tools":[{"type":"web_search"}]}`)
+	originalResponsesPreview := []byte(`{"tools":[{"type":"web_search_preview_2025_03_11"}]}`)
+	translatedWithGoogleSearch := []byte(`{"requestType":"web_search","request":{"tools":[{"googleSearch":{}}]}}`)
+	translatedWithoutGoogleSearch := []byte(`{"request":{"contents":[]}}`)
+
+	if !shouldResolveAntigravityWebSearchGroundingURLs(sdktranslator.FormatClaude, original, translatedWithGoogleSearch) {
+		t.Fatal("expected typed Claude web search translated to web_search request to resolve grounding URLs")
+	}
+	if !shouldResolveAntigravityWebSearchGroundingURLs(sdktranslator.FormatOpenAIResponse, originalResponses, translatedWithGoogleSearch) {
+		t.Fatal("expected typed OpenAI Responses web search translated to web_search request to resolve grounding URLs")
+	}
+	if !shouldResolveAntigravityWebSearchGroundingURLs(sdktranslator.FormatOpenAIResponse, originalResponsesPreview, translatedWithGoogleSearch) {
+		t.Fatal("expected web_search_preview_2025_03_11 translated to web_search request to resolve grounding URLs")
+	}
+	if shouldResolveAntigravityWebSearchGroundingURLs(sdktranslator.FormatClaude, original, translatedWithoutGoogleSearch) {
+		t.Fatal("expected request without googleSearch to skip grounding URL resolution")
+	}
+	if shouldResolveAntigravityWebSearchGroundingURLs(sdktranslator.FormatOpenAI, original, translatedWithGoogleSearch) {
+		t.Fatal("expected non-Claude/non-Responses source format to skip grounding URL resolution")
+	}
+}
+
 func TestAntigravityPrepareRequestAuth_FetchesMissingProjectID(t *testing.T) {
 	executor := &AntigravityExecutor{}
 	auth := &cliproxyauth.Auth{Metadata: map[string]any{
@@ -117,7 +283,7 @@ func TestAntigravityPrepareRequestAuth_FetchesMissingProjectID(t *testing.T) {
 		"expired":      time.Now().Add(1 * time.Hour).Format(time.RFC3339),
 	}}
 	ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.String() != "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist" {
+		if req.URL.String() != "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist" {
 			t.Fatalf("unexpected project discovery request: %s", req.URL.String())
 		}
 		if got := req.Header.Get("X-Goog-Api-Client"); got != "" {
@@ -152,6 +318,33 @@ func TestAntigravityPrepareRequestAuth_FetchesMissingProjectID(t *testing.T) {
 	}
 }
 
+func TestAntigravityPrepareRequestAuth_UpstreamForbiddenPreserves403(t *testing.T) {
+	executor := &AntigravityExecutor{}
+	auth := &cliproxyauth.Auth{Metadata: map[string]any{
+		"access_token": "token",
+		"expired":      time.Now().Add(1 * time.Hour).Format(time.RFC3339),
+	}}
+	ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"code":403,"message":"The caller does not have permission"}}`)),
+		}, nil
+	}))
+
+	_, err := executor.PrepareRequestAuth(ctx, auth)
+	if err == nil {
+		t.Fatalf("PrepareRequestAuth should fail on upstream 403")
+	}
+	status, ok := err.(interface{ StatusCode() int })
+	if !ok {
+		t.Fatalf("error should expose StatusCode(), got %T (%v)", err, err)
+	}
+	if got := status.StatusCode(); got != http.StatusForbidden {
+		t.Fatalf("status code = %d, want %d", got, http.StatusForbidden)
+	}
+}
+
 func TestAntigravityBuildRequest_RejectsMissingProjectID(t *testing.T) {
 	executor := &AntigravityExecutor{}
 	auth := &cliproxyauth.Auth{Metadata: map[string]any{}}
@@ -166,6 +359,84 @@ func TestAntigravityBuildRequest_RejectsMissingProjectID(t *testing.T) {
 	}
 	if got := status.StatusCode(); got != http.StatusBadRequest {
 		t.Fatalf("status code = %d, want %d", got, http.StatusBadRequest)
+	}
+}
+
+func TestAntigravityExecutor_Claude55ExplicitThinkingLevelPreserved(t *testing.T) {
+	sseResponse := "data: {\"response\":{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"OK\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":1,\"candidatesTokenCount\":1,\"totalTokenCount\":2}}}\n\n"
+	for _, model := range []string{"claude-sonnet-5-5-high", "claude-opus-5-5-high"} {
+		for _, level := range []string{"low", "medium", "high"} {
+			for _, stream := range []bool{false, true} {
+				modeName := "non_stream"
+				if stream {
+					modeName = "stream"
+				}
+				t.Run(model+"/"+level+"/"+modeName, func(t *testing.T) {
+					var capturedBody []byte
+					ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+						raw, errRead := io.ReadAll(req.Body)
+						if errRead != nil {
+							return nil, errRead
+						}
+						if errClose := req.Body.Close(); errClose != nil {
+							return nil, errClose
+						}
+						capturedBody = raw
+						return &http.Response{
+							StatusCode: http.StatusOK,
+							Header:     http.Header{"Content-Type": {"text/event-stream"}},
+							Body:       io.NopCloser(strings.NewReader(sseResponse)),
+							Request:    req,
+						}, nil
+					}))
+
+					executor := NewAntigravityExecutor(&config.Config{})
+					auth := &cliproxyauth.Auth{
+						ID:       "ag-claude-55-test",
+						Provider: "antigravity",
+						Metadata: map[string]any{
+							"access_token": "token",
+							"project_id":   "project-1",
+							"expired":      time.Now().Add(time.Hour).Format(time.RFC3339),
+						},
+					}
+					payload := []byte(`{"contents":[{"role":"user","parts":[{"text":"Reply OK"}]}],"generationConfig":{"maxOutputTokens":128000,"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"` + level + `"}}}`)
+					req := cliproxyexecutor.Request{Model: model, Payload: payload}
+					opts := cliproxyexecutor.Options{
+						SourceFormat:    sdktranslator.FormatGemini,
+						ResponseFormat:  sdktranslator.FormatGemini,
+						OriginalRequest: payload,
+						Stream:          stream,
+					}
+
+					if stream {
+						res, errStream := executor.ExecuteStream(ctx, auth, req, opts)
+						if errStream != nil {
+							t.Fatalf("ExecuteStream() error = %v", errStream)
+						}
+						for chunk := range res.Chunks {
+							if chunk.Err != nil {
+								t.Fatalf("stream chunk error = %v", chunk.Err)
+							}
+						}
+					} else {
+						if _, errExec := executor.Execute(ctx, auth, req, opts); errExec != nil {
+							t.Fatalf("Execute() error = %v", errExec)
+						}
+					}
+
+					if got := ojson.GetBytes(capturedBody, "request.generationConfig.thinkingConfig.thinkingLevel").String(); got != level {
+						t.Fatalf("thinkingLevel = %q, want %q; body=%s", got, level, capturedBody)
+					}
+					if budget := ojson.GetBytes(capturedBody, "request.generationConfig.thinkingConfig.thinkingBudget"); budget.Exists() {
+						t.Fatalf("thinkingBudget should be absent, got %s; body=%s", budget.Raw, capturedBody)
+					}
+					if include := ojson.GetBytes(capturedBody, "request.generationConfig.thinkingConfig.includeThoughts"); !include.Exists() || !include.Bool() {
+						t.Fatalf("includeThoughts = %s, want true; body=%s", include.Raw, capturedBody)
+					}
+				})
+			}
+		}
 	}
 }
 
@@ -219,17 +490,20 @@ func buildRequestBodyFromPayload(t *testing.T, modelName string) map[string]any 
 							"parametersJsonSchema": {
 								"$schema": "http://json-schema.org/draft-07/schema#",
 								"$id": "root-schema",
+								"$comment": "root comment should be removed",
 								"type": "object",
 								"properties": {
 									"$id": {"type": "string"},
 									"arg": {
 										"type": "object",
+										"$comment": "nested comment should be removed",
 										"prefill": "hello",
 										"properties": {
 											"mode": {
 												"type": "string",
 												"deprecated": true,
 												"enum": ["a", "b"],
+												"enumDescriptions": ["Alpha", "Beta"],
 												"enumTitles": ["A", "B"]
 											}
 										}
@@ -308,6 +582,9 @@ func assertSchemaSanitizedAndPropertyPreserved(t *testing.T, params map[string]a
 	if _, ok := params["$id"]; ok {
 		t.Fatalf("root $id should be removed from schema")
 	}
+	if _, ok := params["$comment"]; ok {
+		t.Fatalf("root $comment should be removed from schema")
+	}
 	if _, ok := params["patternProperties"]; ok {
 		t.Fatalf("patternProperties should be removed from schema")
 	}
@@ -327,6 +604,9 @@ func assertSchemaSanitizedAndPropertyPreserved(t *testing.T, params map[string]a
 	if _, ok := arg["prefill"]; ok {
 		t.Fatalf("prefill should be removed from nested schema")
 	}
+	if _, ok := arg["$comment"]; ok {
+		t.Fatalf("nested $comment should be removed from schema")
+	}
 
 	argProps, ok := arg["properties"].(map[string]any)
 	if !ok {
@@ -338,6 +618,9 @@ func assertSchemaSanitizedAndPropertyPreserved(t *testing.T, params map[string]a
 	}
 	if _, ok := mode["enumTitles"]; ok {
 		t.Fatalf("enumTitles should be removed from nested schema")
+	}
+	if _, ok := mode["enumDescriptions"]; ok {
+		t.Fatalf("enumDescriptions should be removed from nested schema")
 	}
 	if _, ok := mode["deprecated"]; ok {
 		t.Fatalf("deprecated should be removed from nested schema")

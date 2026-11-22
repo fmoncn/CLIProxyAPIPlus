@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -274,6 +274,7 @@ func (k *KiroAuth) CreateTokenStorage(tokenData *KiroTokenData) *KiroTokenStorag
 		LastRefresh:  time.Now().Format(time.RFC3339),
 		ClientID:     tokenData.ClientID,
 		ClientSecret: tokenData.ClientSecret,
+		ClientIDHash: tokenData.ClientIDHash,
 		Region:       tokenData.Region,
 		StartURL:     tokenData.StartURL,
 		Email:        tokenData.Email,
@@ -313,6 +314,9 @@ func (k *KiroAuth) UpdateTokenStorage(storage *KiroTokenStorage, tokenData *Kiro
 	}
 	if tokenData.ClientSecret != "" {
 		storage.ClientSecret = tokenData.ClientSecret
+	}
+	if tokenData.ClientIDHash != "" {
+		storage.ClientIDHash = tokenData.ClientIDHash
 	}
 	if tokenData.Region != "" {
 		storage.Region = tokenData.Region

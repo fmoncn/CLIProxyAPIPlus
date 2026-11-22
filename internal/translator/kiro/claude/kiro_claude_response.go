@@ -10,10 +10,10 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/usage"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/usage"
 	log "github.com/sirupsen/logrus"
 
-	kirocommon "github.com/router-for-me/CLIProxyAPI/v7/internal/translator/kiro/common"
+	kirocommon "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/kiro/common"
 )
 
 // generateThinkingSignature generates a signature for thinking content.
@@ -106,13 +106,24 @@ func BuildClaudeResponse(content string, toolUses []KiroToolUse, model string, u
 		"model":       model,
 		"content":     contentBlocks,
 		"stop_reason": stopReason,
-		"usage": map[string]interface{}{
-			"input_tokens":  usageInfo.InputTokens,
-			"output_tokens": usageInfo.OutputTokens,
-		},
+		"usage":       buildClaudeUsage(usageInfo),
 	}
 	result, _ := json.Marshal(response)
 	return result
+}
+
+func buildClaudeUsage(usageInfo usage.Detail) map[string]interface{} {
+	payload := map[string]interface{}{
+		"input_tokens":  usageInfo.InputTokens,
+		"output_tokens": usageInfo.OutputTokens,
+	}
+	if usageInfo.CacheReadTokens != 0 {
+		payload["cache_read_input_tokens"] = usageInfo.CacheReadTokens
+	}
+	if usageInfo.CacheCreationTokens != 0 {
+		payload["cache_creation_input_tokens"] = usageInfo.CacheCreationTokens
+	}
+	return payload
 }
 
 // ExtractThinkingFromContent parses content to extract thinking blocks and text.

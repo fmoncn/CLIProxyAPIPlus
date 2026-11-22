@@ -1,11 +1,12 @@
 package cliproxy
 
 import (
+	"context"
 	"testing"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
-	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 )
 
 func TestRegisterModelsForAuth_GitLabUsesDiscoveredModels(t *testing.T) {
@@ -26,7 +27,7 @@ func TestRegisterModelsForAuth_GitLabUsesDiscoveredModels(t *testing.T) {
 	reg.UnregisterClient(auth.ID)
 	t.Cleanup(func() { reg.UnregisterClient(auth.ID) })
 
-	service.registerModelsForAuth(auth)
+	service.registerModelsForAuth(context.Background(), auth)
 	models := reg.GetModelsForClient(auth.ID)
 	if len(models) < 2 {
 		t.Fatalf("expected stable alias and discovered model, got %d entries", len(models))
@@ -59,7 +60,7 @@ func TestRegisterModelsForAuth_GitLabIncludesAgenticCatalog(t *testing.T) {
 	reg.UnregisterClient(auth.ID)
 	t.Cleanup(func() { reg.UnregisterClient(auth.ID) })
 
-	service.registerModelsForAuth(auth)
+	service.registerModelsForAuth(context.Background(), auth)
 	models := reg.GetModelsForClient(auth.ID)
 	if len(models) < 5 {
 		t.Fatalf("expected stable alias plus built-in agentic catalog, got %d entries", len(models))

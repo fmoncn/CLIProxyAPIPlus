@@ -4,7 +4,6 @@
 package cmd
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -17,14 +16,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/auth/gemini"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/interfaces"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/misc"
-	sdkAuth "github.com/router-for-me/CLIProxyAPI/v7/sdk/auth"
-	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
+	"github.com/MoeForge/moego/ojson"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/gemini"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/interfaces"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/misc"
+	sdkAuth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
+	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	log "github.com/sirupsen/logrus"
-	"github.com/tidwall/gjson"
 )
 
 const (
@@ -545,21 +544,6 @@ func resolveProjectSelections(selection string, projects []interfaces.GCPProject
 	return selections, nil
 }
 
-func defaultProjectPrompt() func(string) (string, error) {
-	reader := bufio.NewReader(os.Stdin)
-	return func(prompt string) (string, error) {
-		fmt.Print(prompt)
-		line, errRead := reader.ReadString('\n')
-		if errRead != nil {
-			if errors.Is(errRead, io.EOF) {
-				return strings.TrimSpace(line), nil
-			}
-			return "", errRead
-		}
-		return strings.TrimSpace(line), nil
-	}
-}
-
 func showProjectSelectionHelp(email string, projects []interfaces.GCPProjectProjects) {
 	if email != "" {
 		log.Infof("Your account %s needs to specify a project ID.", email)
@@ -602,7 +586,7 @@ func checkCloudAPIIsEnabled(ctx context.Context, httpClient *http.Client, projec
 
 		if resp.StatusCode == http.StatusOK {
 			bodyBytes, _ := io.ReadAll(resp.Body)
-			if gjson.GetBytes(bodyBytes, "state").String() == "ENABLED" {
+			if ojson.GetBytes(bodyBytes, "state").String() == "ENABLED" {
 				_ = resp.Body.Close()
 				continue
 			}
@@ -623,7 +607,7 @@ func checkCloudAPIIsEnabled(ctx context.Context, httpClient *http.Client, projec
 
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		errMessage := string(bodyBytes)
-		errMessageResult := gjson.GetBytes(bodyBytes, "error.message")
+		errMessageResult := ojson.GetBytes(bodyBytes, "error.message")
 		if errMessageResult.Exists() {
 			errMessage = errMessageResult.String()
 		}

@@ -249,6 +249,9 @@ func GetCodeBuddyDomesticModels() []*ModelInfo {
 			ContextLength:       128000,
 			MaxCompletionTokens: 32768,
 			SupportedEndpoints:  []string{"/chat/completions"},
+			// 上游认 reasoning_effort（任意值都开思考）；不声明会被 ApplyThinking 剥掉，
+			// 非思考模式下 codex 长会话经常“说完下一步就 stop”。
+			Thinking: &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
 		},
 		{
 			ID:                  "step-5-preview",
@@ -303,7 +306,7 @@ func GetCodeBuddyDomesticModels() []*ModelInfo {
 			ContextLength:       1000000,
 			MaxCompletionTokens: 128000,
 			SupportedEndpoints:  []string{"/chat/completions"},
-			Thinking: &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
+			Thinking:            &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
 		},
 		{
 			ID:                  "minimax-m3.1-flash",
@@ -316,7 +319,7 @@ func GetCodeBuddyDomesticModels() []*ModelInfo {
 			ContextLength:       1000000,
 			MaxCompletionTokens: 128000,
 			SupportedEndpoints:  []string{"/chat/completions"},
-			Thinking: &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
+			Thinking:            &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
 		},
 		{
 			ID:                  "kimi-k3.1-pro",
@@ -329,7 +332,7 @@ func GetCodeBuddyDomesticModels() []*ModelInfo {
 			ContextLength:       1000000,
 			MaxCompletionTokens: 32000,
 			SupportedEndpoints:  []string{"/chat/completions"},
-			Thinking: &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
+			Thinking:            &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
 		},
 		{
 			ID:                  "hy4free",
@@ -342,7 +345,7 @@ func GetCodeBuddyDomesticModels() []*ModelInfo {
 			ContextLength:       960000,
 			MaxCompletionTokens: 64000,
 			SupportedEndpoints:  []string{"/chat/completions"},
-			Thinking: &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
+			Thinking:            &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
 		},
 		{
 			ID:                  "hy4std",
@@ -355,7 +358,7 @@ func GetCodeBuddyDomesticModels() []*ModelInfo {
 			ContextLength:       960000,
 			MaxCompletionTokens: 64000,
 			SupportedEndpoints:  []string{"/chat/completions"},
-			Thinking: &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
+			Thinking:            &ThinkingSupport{Levels: []string{"minimal", "low", "medium", "high", "xhigh"}},
 		},
 	}
 }

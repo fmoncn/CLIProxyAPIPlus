@@ -11,11 +11,13 @@ config.yaml
 .mcp.json
 # Generated content
 bin/*
-logs/*
+/logs
 conv/*
 temp/*
 refs/*
 tmp/*
+plugins/*
+examples/plugin/bin/*
 
 # Storage backends
 pgstore/*
@@ -27,22 +29,28 @@ static/*
 
 # Authentication data
 auths/*
+/auths
 !auths/.gitkeep
 
 # Documentation
 docs/*
+!docs/management-api-v8.md
 AGENTS.md
 CLAUDE.md
 GEMINI.md
+AGENTS.override.md
 
 # Tooling metadata
 .vscode/*
 .worktrees/
 .codex/*
 .claude/*
+.claude
 .gemini/*
 .serena/*
 .agent/*
+.agents
+.pi
 .agents/*
 .opencode/*
 .idea/*
@@ -51,8 +59,16 @@ GEMINI.md
 _bmad/*
 _bmad-output/*
 .mcp/cache/
+.gocache/
+.gitnexus/
 
 # macOS
 .DS_Store
 ._*
-.gocache/
+
+# docker
+docker-compose.override.yml
+
+
+# Local LLM Wiki vault
+.llm-wiki

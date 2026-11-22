@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 )
 
 const (
@@ -40,12 +40,13 @@ var ModelMap = map[string]string{
 	"efficient":   "efficient",
 	"lite":        "lite",
 	// Frontier models — pin a specific backing model
-	"qmodel":    "qmodel",    // Qwen 3.6 Plus
-	"dmodel":    "dmodel",    // DeepSeek V4 Pro
-	"dfmodel":   "dfmodel",   // DeepSeek V4 Flash
-	"gm51model": "gm51model", // GLM 5.1
-	"kmodel":    "kmodel",    // Kimi K2.6
-	"mmodel":    "mmodel",    // MiniMax M2.7
+	"qmodel":        "qmodel",        // Qwen3.7 Plus
+	"qmodel_latest": "qmodel_latest", // Qwen3.7 Max (latest)
+	"dmodel":        "dmodel",        // DeepSeek V4 Pro
+	"dfmodel":       "dfmodel",       // DeepSeek V4 Flash
+	"gm51model":     "gm51model",     // GLM 5.1
+	"kmodel":        "kmodel",        // Kimi K2.6
+	"mmodel":        "mmodel",        // MiniMax M3
 }
 
 // doRefreshToken performs a token refresh and persists the result to authFilePath.
@@ -54,7 +55,15 @@ var ModelMap = map[string]string{
 func doRefreshToken(ctx context.Context, cfg *config.Config, storage *QoderTokenStorage, authFilePath string) error {
 	auth := NewQoderAuth(cfg)
 
-	tokenData, err := auth.RefreshTokens(ctx, storage.Token, storage.RefreshToken)
+	var (
+		tokenData *QoderTokenData
+		err       error
+	)
+	if storage.AuthMode == "job-token" {
+		tokenData, err = auth.RefreshJobToken(ctx, storage.RefreshToken)
+	} else {
+		tokenData, err = auth.RefreshTokens(ctx, storage.Token, storage.RefreshToken)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to refresh token: %w", err)
 	}
