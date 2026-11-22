@@ -77,6 +77,23 @@ func sanitizeCodexIdentity(payload []byte) []byte {
 
 func fixCodeBuddyPayload(payload []byte) []byte {
 	messages := ojson.GetBytesNoCopy(payload, "messages")
+	// CodeBuddy accepts only system/user/assistant and answers 400 code 11128
+	// "Illegal API invocation from an unapproved channel" for role "developer".
+	// Codex sends its whole instruction preamble as developer messages, so
+	// downgrading them to system keeps the instructions and the channel check.
+	if messages.IsArray() {
+		for i, msg := range messages.Array() {
+			if msg.Get("role").String() != "developer" {
+				continue
+			}
+			if updated, err := ojson.SetBytes(payload, fmt.Sprintf("messages.%d.role", i), "system"); err == nil {
+				payload = updated
+			}
+		}
+		if updated := ojson.GetBytesNoCopy(payload, "messages"); updated.IsArray() {
+			messages = updated
+		}
+	}
 	if messages.IsArray() {
 		arr := messages.Array()
 		if len(arr) > 0 && arr[0].Get("role").String() != "system" {
